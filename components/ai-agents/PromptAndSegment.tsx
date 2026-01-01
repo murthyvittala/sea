@@ -1,7 +1,24 @@
 'use client';
-
-import { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { supabase } from '@/lib/supabase';
+
+// ErrorBoundary component for debug
+function ErrorBoundary({ name, children }: { name: string, children: React.ReactNode }) {
+  const [error, setError] = useState<Error | null>(null);
+  if (error) {
+    return <div style={{color:'red'}}>[ERROR in {name}]: {error.message}</div>;
+  }
+  try {
+    return <>{children}</>;
+  } catch (e: any) {
+    setError(e);
+    return <div style={{color:'red'}}>[ERROR in {name}]: {e.message}</div>;
+  }
+}
+
+const ResultsTable = dynamic(() => import('./ResultsTable'), { ssr: false });
+const D3Tree = dynamic(() => import('./D3tree'), { ssr: false });
 
 interface Segment {
   id: number;
@@ -11,16 +28,17 @@ interface Segment {
 
 
 export default function PromptAndSegment() {
+  // Store final specialist results
+  const [specialistResults, setSpecialistResults] = useState<any>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [selectedPattern, setSelectedPattern] = useState<string>('');
   const [prompt, setPrompt] = useState<string>('');
   const [loadingSegments, setLoadingSegments] = useState(false);
   const [loadingQueries, setLoadingQueries] = useState(false);
-  const [outputRows, setOutputRows] = useState<any[]>([]);
-  const [outputRaw, setOutputRaw] = useState<string>('');
   const [streaming, setStreaming] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
+  // Store raw JSONs received from backend
+  const [rawAgentJsons, setRawAgentJsons] = useState<string[]>([]);
   const [payloadPreview, setPayloadPreview] = useState<any>(null);
   // Step-by-step output state for steps (move to top-level)
   const [stepOutputs, setStepOutputs] = useState<any[]>([]);
@@ -140,12 +158,24 @@ export default function PromptAndSegment() {
                 </tr>
               </thead>
               <tbody>
-                {Object.entries(clusters).map(([cluster, kws]: any, i: number) => (
-                  <tr key={i}>
-                    <td className="border px-2 py-1 font-semibold">{cluster}</td>
-                    <td className="border px-2 py-1">{Array.isArray(kws) ? kws.join(', ') : ''}</td>
-                  </tr>
-                ))}
+                {Object.entries(clusters)
+                  .sort(([a], [b]) => {
+                    // Match 'Cluster' followed by number, case-insensitive, allow spaces
+                    const matchA = a.match(/cluster*(\d+)/i);
+                    const matchB = b.match(/cluster*(\d+)/i);
+                    if (matchA && matchB) {
+                      const numA = parseInt(matchA[1], 10);
+                      const numB = parseInt(matchB[1], 10);
+                      return numA - numB;
+                    }
+                    return a.localeCompare(b);
+                  })
+                  .map(([cluster, kws]: any, i: number) => (
+                    <tr key={i}>
+                      <td className="border px-2 py-1 font-semibold">{cluster}</td>
+                      <td className="border px-2 py-1">{Array.isArray(kws) ? kws.join(', ') : ''}</td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>
@@ -203,8 +233,7 @@ export default function PromptAndSegment() {
       return;
     }
     setStreaming(true);
-    setOutputRows([]);
-    setOutputRaw('');
+    setRawAgentJsons([]);
     const payload = {
       seed_keyword: prompt.trim(),
       user_id: userId,
@@ -222,12 +251,11 @@ export default function PromptAndSegment() {
     });
     if (!response.body) {
       setStreaming(false);
-      setOutputRaw('No response body');
+      alert('No response body');
       return;
     }
     const reader = response.body.getReader();
     let buffer = '';
-    let rows: any[] = [];
 
     // Helper: Add step output
     function addStepOutput(stepObj: any) {
@@ -236,21 +264,23 @@ export default function PromptAndSegment() {
 
     // Streaming logic with step-by-step messages
     setStepOutputs([]); // reset steps
+    setRawAgentJsons([]); // reset raw jsons
     let currentStep = '';
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       const chunk = new TextDecoder().decode(value);
       buffer += chunk;
-      setOutputRaw(prev => prev + chunk);
       // Try to parse SSE events (assuming each event is a JSON line or data: ...)
       const lines = buffer.split('\n');
       for (let line of lines) {
         line = line.trim();
         if (line.startsWith('data:')) {
           try {
-            const json = JSON.parse(line.replace('data:', '').trim());
-            // Step-by-step messages
+            const jsonStr = line.replace('data:', '').trim();
+            setRawAgentJsons(prev => [...prev, jsonStr]);
+            const json = JSON.parse(jsonStr);
+            // Step-by-step messages (optional, can keep or remove)
             if (json.step && json.step !== currentStep) {
               currentStep = json.step;
               switch (json.step) {
@@ -270,11 +300,23 @@ export default function PromptAndSegment() {
                   break;
               }
             }
+            // If we get the specialist stage and completed status, store results for table/graph
+            if (json.stage === 'seo_content_specialist' && json.status === 'completed' && json.results) {
+              console.log('[DEBUG] Received seo_content_specialist JSON:', json);
+              setSpecialistResults(json.results);
+            }
             // After data for each step
             addStepOutput({ type: 'step', data: json });
           } catch {}
         }
       }
+
+    // Unconditional debug message to confirm render
+    // (Move to render block, not inside streaming loop)
+
+    // Specialist Results Table & Sunburst Graph (always at the bottom)
+    // (Move to render block, not inside streaming loop)
+
       buffer = lines[lines.length - 1]; // keep last incomplete line
     }
     setStreaming(false);
@@ -282,40 +324,91 @@ export default function PromptAndSegment() {
 
   return (
     <div className="flex flex-col gap-6 relative">
+      {/* Unconditional debug message to confirm render */}
+      <div style={{position:'fixed',bottom:0,right:0,zIndex:9999,background:'#eee',padding:'2px 8px',fontSize:'10px'}}>[DEBUG] PromptAndSegment rendered</div>
+
+
       {/* Output table above controls */}
-      {streaming && (
+      {(streaming || stepOutputs.length > 0) && (
         <div className="mb-4 flex justify-end">
           <div className="max-w-xl w-full">
             <div
               className="bg-white border border-gray-300 rounded-lg shadow p-4 text-right"
               style={{ wordBreak: 'break-word' }}
             >
-              <span className="block text-gray-800 mb-2">Content cluster agent is now working on the seed keywords you have given:</span>
+              <span className="block text-gray-800 mb-2">Content cluster agents is now working on the seed keywords you have given:</span>
               <span className="inline-block text-gray-900 text-xs" style={{ background: 'none', border: 'none', padding: 0 }}>
                 {prompt.trim() ? prompt.trim().split('\n').map((kw, i) => (
                   <span key={i} style={{ display: 'inline-block', marginRight: 8 }}>{kw}</span>
                 )) : <span className="text-gray-400">No keywords provided.</span>}
               </span>
+              {/* Step-by-step output rendering appended below initial message */}
+              {stepOutputs.length > 0 && (
+                <div className="flex flex-col gap-2 mt-4 text-left">
+                  {stepOutputs.map((item, idx) => {
+                    if (item.type === 'msg') {
+                      return <div key={idx} className="text-gray-600 font-semibold mb-1">{item.text}</div>;
+                    }
+                    if (item.type === 'step') {
+                      return <div key={idx}>{formatStepOutput(item.data)}</div>;
+                    }
+                    return null;
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
-
-      {/* Step-by-step output rendering (always show if there is output) */}
-      {stepOutputs.length > 0 && (
-        <div className="flex flex-col gap-2 mb-4">
-          {stepOutputs.map((item, idx) => {
-            if (item.type === 'msg') {
-              return <div key={idx} className="text-gray-600 font-semibold mb-1">{item.text}</div>;
-            }
-            if (item.type === 'step') {
-              return <div key={idx}>{formatStepOutput(item.data)}</div>;
-            }
-            return null;
-          })}
+      
+      {/*
+      Raw JSON output from each agent stage
+      {rawAgentJsons.length > 0 && (
+        <div className="mb-4">
+          <div className="font-semibold text-blue-700 mb-2">Raw JSON from each agent stage:</div>
+          <pre className="bg-gray-100 p-2 text-xs overflow-x-auto max-h-60 rounded">
+            {rawAgentJsons.map((json, idx) => (
+              <div key={idx}>{json}</div>
+            ))}
+          </pre>
         </div>
       )}
+      */}
+      {/* Step-by-step output rendering moved above, under initial message */}
 
+      {/* Specialist Results Table & Sunburst Graph (now just above prompt input) */}
+      {/* --- Specialist Results Table Block START --- */}
+      {specialistResults && (
+        <>
+          {/* <div style={{color:'red',fontWeight:'bold'}}>[DEBUG] specialistResults is truthy, rendering block</div> */}
+          <div className="mt-8 p-6 bg-white border border-gray-300 rounded-lg shadow flex flex-col gap-8">
+            <div>
+              {/* <div className="font-bold text-lg mb-2">SEO Content Specialist Results</div>
+              <pre className="bg-gray-100 p-2 text-xs mb-2">[DEBUG] Table Data: {JSON.stringify(specialistResults.graph_data, null, 2)}</pre> */}
+              {Array.isArray(specialistResults.graph_data) && specialistResults.graph_data.length > 0 ? (
+                <>
+                  <div className="font-bold text-lg mb-2">Pillar and Cluster Pages Table</div>
+                  <ResultsTable data={specialistResults.graph_data} />
+                  {/* Sunburst Graph below the table */}
+                  {specialistResults.sunburst_data && Array.isArray(specialistResults.sunburst_data.children) && specialistResults.sunburst_data.children.length > 0 ? (
+                    <div className="mt-8">
+                      <div className="font-bold text-lg mb-2">Pillar and clustar tree graph</div>
+                      <D3Tree data={specialistResults.sunburst_data} />
+                    </div>
+                  ) : (
+                    <div style={{color:'orange',fontWeight:'bold'}}>[DEBUG] No sunburst_data found or empty</div>
+                  )}
+                </>
+              ) : (
+                <div style={{color:'orange',fontWeight:'bold'}}>[DEBUG] No graph_data found or empty array</div>
+              )}
+            </div>
+          </div>
+          <script dangerouslySetInnerHTML={{__html:`console.log('[DEBUG] specialistResults in render:', ${JSON.stringify(specialistResults)})`}} />
+        </>
+      )}
+      {/* --- Specialist Results Table Block END --- */}
+      
       {/* Controls: prompt and segment side by side */}
       <div className="flex gap-4">
         <div className="flex-1">
