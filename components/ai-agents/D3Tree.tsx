@@ -15,7 +15,7 @@ export default function D3Tree({ data, width = 1000, height = 600 }: { data: any
     if (!data || !ref.current) return;
     ref.current.innerHTML = "";
 
-    const margin = { top: 40, right: 120, bottom: 40, left: 120 };
+    const margin = { top: 40, right: 220, bottom: 40, left: 120 };
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
 
@@ -28,7 +28,8 @@ export default function D3Tree({ data, width = 1000, height = 600 }: { data: any
       .attr("transform", `translate(${margin.left},${margin.top})`);
 
     const root = d3.hierarchy<TreeNode>(data);
-    const treeLayout = d3.tree<TreeNode>().size([innerHeight, innerWidth]);
+    // Reduce horizontal spacing to 80% of current
+    const treeLayout = d3.tree<TreeNode>().size([innerHeight, innerWidth * 0.8]);
     treeLayout(root);
 
     const linkGenerator = d3
@@ -68,9 +69,20 @@ export default function D3Tree({ data, width = 1000, height = 600 }: { data: any
 
     node
       .append("text")
-      .attr("dy", 3)
-      .attr("x", d => d.children ? -14 : 14)
-      .attr("text-anchor", d => d.children ? "end" : "start")
+      .attr("dy", function(d) {
+        // Add 5px padding to depth 1 (second parent) labels
+        return d.depth === 1 ? 18 : 3;
+      })
+      .attr("x", function(d) {
+        // Center depth 1 (second parent) labels
+        if (d.depth === 1) return 0;
+        return d.children ? -14 : 14;
+      })
+      .attr("text-anchor", function(d) {
+        // Center depth 1 (second parent) labels
+        if (d.depth === 1) return "middle";
+        return d.children ? "end" : "start";
+      })
       .text(d => d.data.name)
       .style("font-size", "13px");
 

@@ -1,6 +1,7 @@
 // No React client imports in server component
 import { getAgents } from '../../../lib/ai-agents';
-import PromptAndSegmentWrapper from './PromptAndSegmentWrapper';
+import ContentClusterWrapper from './ContentClusterWrapper';
+import ContentDecay from '../../../components/ai-agents/ContentDecay';
 import DetailsButton from './DetailsButton';
 
 
@@ -32,10 +33,18 @@ export default async function AgentDetailPage({ params }: { params: { id: string
       <div className="mb-2 text-xs font-semibold text-blue-600 uppercase tracking-wider">{agent.category}</div>
       
 
+
       {/* Prompt and Segment selection for agent 1 */}
       {String(agent.id) === '1' && (
         <div className="my-8">
-          <PromptAndSegmentWrapper />
+          <ContentClusterWrapper />
+        </div>
+      )}
+
+      {/* Date range dropdown and Run Agent for agent 2 */}
+      {String(agent.id) === '2' && (
+        <div className="my-8">
+          <ContentDecay />
         </div>
       )}
 

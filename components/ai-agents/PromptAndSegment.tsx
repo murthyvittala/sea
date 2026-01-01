@@ -18,7 +18,7 @@ function ErrorBoundary({ name, children }: { name: string, children: React.React
 }
 
 const ResultsTable = dynamic(() => import('./ResultsTable'), { ssr: false });
-const D3Tree = dynamic(() => import('./D3tree'), { ssr: false });
+const D3Tree = dynamic(() => import('./D3Tree'), { ssr: false });
 
 interface Segment {
   id: number;
@@ -27,7 +27,7 @@ interface Segment {
 }
 
 
-export default function PromptAndSegment() {
+export default function ContentCluster() {
   // Store final specialist results
   const [specialistResults, setSpecialistResults] = useState<any>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -42,6 +42,9 @@ export default function PromptAndSegment() {
   const [payloadPreview, setPayloadPreview] = useState<any>(null);
   // Step-by-step output state for steps (move to top-level)
   const [stepOutputs, setStepOutputs] = useState<any[]>([]);
+  // Track latest agent stage and status
+  const [agentStage, setAgentStage] = useState<string | null>(null);
+  const [agentStatus, setAgentStatus] = useState<string | null>(null);
   // Validation state
   const [keywordError, setKeywordError] = useState<string | null>(null);
 
@@ -278,26 +281,16 @@ export default function PromptAndSegment() {
         if (line.startsWith('data:')) {
           try {
             const jsonStr = line.replace('data:', '').trim();
+            console.log('[AGENT STREAM OUTPUT]', jsonStr); // Debug log
             setRawAgentJsons(prev => [...prev, jsonStr]);
             const json = JSON.parse(jsonStr);
-            // Step-by-step messages (optional, can keep or remove)
-            if (json.step && json.step !== currentStep) {
-              currentStep = json.step;
-              switch (json.step) {
-                case 'keywords':
-                  addStepOutput({ type: 'msg', text: 'Analysing & Gathering keywords ideas...' });
-                  break;
-                case 'clusters':
-                  addStepOutput({ type: 'msg', text: 'Creating the Cluster ideas...' });
-                  break;
-                case 'architecture':
-                  addStepOutput({ type: 'msg', text: 'Creating Pillar and Cluster pages...' });
-                  break;
-                case 'briefs':
-                  addStepOutput({ type: 'msg', text: 'Generating final Pillar and Cluster pages...' });
-                  break;
-                default:
-                  break;
+            // Step-by-step messages: use stage from JSON
+            if (json.stage) {
+              setAgentStage(json.stage);
+              setAgentStatus(json.status || 'in progress');
+              if (json.stage !== currentStep) {
+                currentStep = json.stage;
+                addStepOutput({ type: 'msg', text: `${json.stage} in progress` });
               }
             }
             // If we get the specialist stage and completed status, store results for table/graph
@@ -325,7 +318,7 @@ export default function PromptAndSegment() {
   return (
     <div className="flex flex-col gap-6 relative">
       {/* Unconditional debug message to confirm render */}
-      <div style={{position:'fixed',bottom:0,right:0,zIndex:9999,background:'#eee',padding:'2px 8px',fontSize:'10px'}}>[DEBUG] PromptAndSegment rendered</div>
+      {/* <div style={{position:'fixed',bottom:0,right:0,zIndex:9999,background:'#eee',padding:'2px 8px',fontSize:'10px'}}>[DEBUG] PromptAndSegment rendered</div> */}
 
 
       {/* Output table above controls */}
@@ -343,7 +336,7 @@ export default function PromptAndSegment() {
                 )) : <span className="text-gray-400">No keywords provided.</span>}
               </span>
               {/* Step-by-step output rendering appended below initial message */}
-              {stepOutputs.length > 0 && (
+              {/* {stepOutputs.length > 0 && (
                 <div className="flex flex-col gap-2 mt-4 text-left">
                   {stepOutputs.map((item, idx) => {
                     if (item.type === 'msg') {
@@ -355,7 +348,7 @@ export default function PromptAndSegment() {
                     return null;
                   })}
                 </div>
-              )}
+              )} */}
             </div>
           </div>
         </div>
@@ -384,7 +377,13 @@ export default function PromptAndSegment() {
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
             </svg>
-            <span className="text-blue-700 font-semibold">AI Agents are working on your task...</span>
+            <span className="text-blue-700 font-semibold">
+              AI Agents are working on your task...
+              {/* Show all agent progress messages for each stage */}
+              {stepOutputs.filter(item => item.type === 'msg').map((item, idx) => (
+                <span key={idx} style={{ marginLeft: 8 }}>{item.text}</span>
+              ))}
+            </span>
           </div>
         </div>
       )}

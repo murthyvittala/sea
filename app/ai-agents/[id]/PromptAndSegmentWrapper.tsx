@@ -1,7 +1,9 @@
 'use client';
 
-import PromptAndSegment from '../../../components/ai-agents/PromptAndSegment';
 
-export default function PromptAndSegmentWrapper() {
-  return <PromptAndSegment />;
+import ContentCluster from '../../../components/ai-agents/contentCluster';
+
+
+export default function ContentClusterWrapper() {
+  return <ContentCluster />;
 }
