@@ -160,9 +160,9 @@ export default function PromptAndSegment() {
               <tbody>
                 {Object.entries(clusters)
                   .sort(([a], [b]) => {
-                    // Match 'Cluster' followed by number, case-insensitive, allow spaces
-                    const matchA = a.match(/cluster*(\d+)/i);
-                    const matchB = b.match(/cluster*(\d+)/i);
+                    // Match 'Cluster' followed by optional space and number, case-insensitive
+                    const matchA = a.match(/cluster\s*(\d+)/i);
+                    const matchB = b.match(/cluster\s*(\d+)/i);
                     if (matchA && matchB) {
                       const numA = parseInt(matchA[1], 10);
                       const numB = parseInt(matchB[1], 10);
@@ -375,6 +375,19 @@ export default function PromptAndSegment() {
       )}
       */}
       {/* Step-by-step output rendering moved above, under initial message */}
+
+      {/* Progress Indicator Block */}
+      {streaming && (
+        <div className="flex justify-center items-center mt-8">
+          <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 shadow">
+            <svg className="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+            </svg>
+            <span className="text-blue-700 font-semibold">AI Agents are working on your task...</span>
+          </div>
+        </div>
+      )}
 
       {/* Specialist Results Table & Sunburst Graph (now just above prompt input) */}
       {/* --- Specialist Results Table Block START --- */}
