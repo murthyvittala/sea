@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set('access_type', 'offline')
     authUrl.searchParams.set('state', userId)
     authUrl.searchParams.set('prompt', 'consent')
+    authUrl.searchParams.set('include_granted_scopes', 'true')
 
     return NextResponse.json({ authUrl: authUrl.toString() })
   } catch (err) {

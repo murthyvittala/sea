@@ -1,7 +1,7 @@
 // No React client imports in server component
 import { getAgents } from '../../../lib/ai-agents';
 import ContentClusterWrapper from './ContentClusterWrapper';
-import ContentDecay from '../../../components/ai-agents/ContentDecay';
+import ContentDecay from '../../../components/ai-agents/contentDecay';
 import DetailsButton from './DetailsButton';
 
 
